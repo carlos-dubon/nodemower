@@ -5,6 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import type { LimitFunction } from "p-limit";
 import type { CacheInfo, PackageManager } from "../types";
+import { removePath } from "./remove";
 import { getDirSize } from "./size";
 
 const execFileAsync = promisify(execFile);
@@ -34,6 +35,15 @@ async function run(cmd: string, args: string[]): Promise<string | undefined> {
     return stdout.trim();
   } catch {
     return undefined;
+  }
+}
+
+async function runOk(cmd: string, args: string[]): Promise<boolean> {
+  try {
+    await execFileAsync(cmd, args, execOptions());
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -145,4 +155,49 @@ export async function measureCache(
   if (!info.exists || !info.cachePath) return { ...info, size: 0 };
   const { size } = await getDirSize(info.cachePath, limit, signal);
   return { ...info, size };
+}
+
+export interface CacheCleanResult {
+  manager: PackageManager;
+  ok: boolean;
+  freed: number;
+  error?: string;
+}
+
+function cleanArgsFor(info: CacheInfo): string[] | undefined {
+  switch (info.manager) {
+    case "npm":
+      return ["cache", "clean", "--force"];
+    case "pnpm":
+      // `store prune` only removes packages not referenced by any project.
+      return ["store", "prune"];
+    case "yarn":
+      return info.version?.startsWith("1.")
+        ? ["cache", "clean"]
+        : ["cache", "clean", "--all"];
+    case "bun":
+      return ["pm", "cache", "rm"];
+    case "deno":
+      return ["clean"];
+  }
+}
+
+export async function cleanCache(info: CacheInfo): Promise<CacheCleanResult> {
+  const freed = info.size ?? 0;
+  const args = cleanArgsFor(info);
+
+  if (args && (await runOk(info.manager, args))) {
+    return { manager: info.manager, ok: true, freed };
+  }
+
+  if (info.cachePath && info.exists && (await removePath(info.cachePath))) {
+    return { manager: info.manager, ok: true, freed };
+  }
+
+  return {
+    manager: info.manager,
+    ok: false,
+    freed: 0,
+    error: "could not clear cache (command failed and directory was not removable)",
+  };
 }

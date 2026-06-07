@@ -24,3 +24,12 @@ export async function removeNodeModules(
     return { path: target, ok: false, freed: 0, error: errorMessage(err) };
   }
 }
+
+export async function removePath(target: string): Promise<boolean> {
+  try {
+    await rimraf(target);
+    return true;
+  } catch {
+    return false;
+  }
+}
