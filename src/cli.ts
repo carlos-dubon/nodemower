@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { Command, InvalidArgumentError } from "commander";
+import { cleanCommand } from "./commands/clean";
 import { scanCommand } from "./commands/scan";
 import { printBanner } from "./ui/banner";
 import { log } from "./ui/logger";
@@ -29,6 +30,17 @@ function buildProgram(): Command {
     .option("-c, --concurrency <n>", "directory traversal concurrency", parseConcurrency)
     .option("--no-banner", "do not print the ASCII banner")
     .action(scanCommand);
+
+  program
+    .command("clean [path]")
+    .description("scan, then interactively delete node_modules")
+    .option("-e, --exclude <path...>", "exclude a path (repeatable)")
+    .option("-c, --concurrency <n>", "directory traversal concurrency", parseConcurrency)
+    .option("--filter <text>", "preselect only results matching a substring")
+    .option("--dry-run", "show what would be deleted without deleting anything")
+    .option("-y, --yes", "skip prompts: select everything and confirm automatically")
+    .option("--no-banner", "do not print the ASCII banner")
+    .action(cleanCommand);
 
   return program;
 }
