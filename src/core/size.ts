@@ -1,16 +1,61 @@
+import { execFile } from "node:child_process";
 import { lstat, readdir } from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
 import type { LimitFunction } from "p-limit";
 import { errorMessage } from "../utils/errors";
+
+const execFileAsync = promisify(execFile);
 
 export interface DirSize {
   size: number;
   error?: string;
 }
 
-// Walk the tree ourselves, summing file sizes. Portable and correct, if not
-// the fastest thing imaginable.
+const IS_WINDOWS = process.platform === "win32";
+
+// `du` reads sizes straight from the filesystem, far faster than statting every
+// file from Node. Windows has no `du`, so there we walk the tree ourselves.
 export async function getDirSize(
+  root: string,
+  limit: LimitFunction,
+  signal?: AbortSignal,
+): Promise<DirSize> {
+  if (!IS_WINDOWS) {
+    const viaDu = await tryDu(root, limit, signal);
+    if (viaDu) return viaDu;
+  }
+  return jsDirSize(root, limit, signal);
+}
+
+async function tryDu(
+  root: string,
+  limit: LimitFunction,
+  signal?: AbortSignal,
+): Promise<DirSize | undefined> {
+  let stdout: string;
+  try {
+    const result = await limit(() =>
+      execFileAsync("du", ["-sk", root], {
+        signal,
+        windowsHide: true,
+        maxBuffer: 8 * 1024 * 1024,
+      }),
+    );
+    stdout = result.stdout;
+  } catch (err) {
+    // `du` exits non-zero on unreadable entries but still prints the total.
+    const partial = (err as { stdout?: string }).stdout;
+    if (typeof partial !== "string" || partial.length === 0) return undefined;
+    stdout = partial;
+  }
+
+  const kib = Number.parseInt(stdout.trim().split(/\s+/, 1)[0] ?? "", 10);
+  if (!Number.isFinite(kib)) return undefined;
+  return { size: kib * 1024 };
+}
+
+async function jsDirSize(
   root: string,
   limit: LimitFunction,
   signal?: AbortSignal,
