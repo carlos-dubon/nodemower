@@ -1,9 +1,11 @@
 import os from "node:os";
+import pLimit from "p-limit";
 import { DEFAULT_SIZE_CONCURRENCY, SUMMARY_PREVIEW_ROWS } from "../constants";
 import { analyze } from "../core/analyze";
+import { measureCache } from "../core/cache";
 import { loadConfig } from "../core/config";
 import { createExcludeMatcher, type ExcludeMatcher } from "../core/exclude";
-import type { ScanResult } from "../types";
+import type { CacheInfo, ScanResult } from "../types";
 import { formatSize, renderColumns } from "../ui/format";
 import { createSpinner, log } from "../ui/logger";
 import { contractHome, expandPath } from "../utils/paths";
@@ -74,6 +76,21 @@ export function printResultsPreview(
   for (const line of renderColumns(rows)) log.line("  " + line);
   const hidden = results.length - shown.length;
   if (hidden > 0) log.dim(`  … and ${hidden} more`);
+}
+
+export async function measureCachesWithSpinner(
+  caches: CacheInfo[],
+): Promise<CacheInfo[]> {
+  const limit = pLimit(DEFAULT_SIZE_CONCURRENCY);
+  const spinner = createSpinner("Measuring cache sizes…").start();
+  try {
+    const measured = await Promise.all(caches.map((c) => measureCache(c, limit)));
+    spinner.stop();
+    return measured;
+  } catch (err) {
+    spinner.fail("Failed to measure caches");
+    throw err;
+  }
 }
 
 export const removeConcurrency = DEFAULT_SIZE_CONCURRENCY;
