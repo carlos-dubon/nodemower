@@ -1,13 +1,15 @@
 import pc from "picocolors";
-import { totalSize } from "../core/analyze";
+import { analyze, totalSize } from "../core/analyze";
+import { createExcludeMatcher } from "../core/exclude";
 import { formatSize, pluralize } from "../ui/format";
 import { printBanner } from "../ui/banner";
 import { log } from "../ui/logger";
-import { prepareScan, printResultsPreview, runAnalyzeWithSpinner } from "./shared";
+import { prepareScan, printResultsPreview, runAnalyzeWithSpinner, resolveRoot } from "./shared";
 
 export interface ScanCommandOptions {
   exclude?: string[];
   concurrency?: number;
+  json?: boolean;
   banner?: boolean;
 }
 
@@ -15,6 +17,31 @@ export async function scanCommand(
   pathArg: string | undefined,
   opts: ScanCommandOptions,
 ): Promise<void> {
+  if (opts.json) {
+    const root = resolveRoot(pathArg);
+    const results = await analyze({
+      root,
+      exclude: createExcludeMatcher(opts.exclude ?? []),
+    });
+    process.stdout.write(
+      JSON.stringify(
+        {
+          root,
+          count: results.length,
+          totalBytes: totalSize(results),
+          results: results.map((r) => ({
+            path: r.path,
+            bytes: r.size,
+            error: r.error,
+          })),
+        },
+        null,
+        2,
+      ) + "\n",
+    );
+    return;
+  }
+
   if (opts.banner !== false) printBanner();
 
   const prepared = await prepareScan(pathArg, opts.exclude ?? [], opts.concurrency);
