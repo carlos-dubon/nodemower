@@ -1,7 +1,7 @@
 import { checkbox, confirm, input } from "@inquirer/prompts";
 import pc from "picocolors";
 import { LARGE_RESULT_THRESHOLD } from "../constants";
-import type { ScanResult } from "../types";
+import type { CacheInfo, PackageManager, ScanResult } from "../types";
 import { contractHome } from "../utils/paths";
 import { formatSize } from "./format";
 
@@ -42,6 +42,24 @@ export async function selectNodeModules(
   return selected
     .map((p) => byPath.get(p))
     .filter((r): r is ScanResult => r !== undefined);
+}
+
+export async function selectCaches(caches: CacheInfo[]): Promise<CacheInfo[]> {
+  const byManager = new Map(caches.map((c) => [c.manager, c]));
+  const selected = await checkbox<PackageManager>({
+    message: "Select caches to clear",
+    choices: caches.map((c) => ({
+      name: `${c.manager.padEnd(5)}  ${pc.dim(formatSize(c.size))}`,
+      description: c.cachePath ? contractHome(c.cachePath) : undefined,
+      value: c.manager,
+      checked: true,
+    })),
+    loop: false,
+  });
+
+  return selected
+    .map((m) => byManager.get(m))
+    .filter((c): c is CacheInfo => c !== undefined);
 }
 
 export async function confirmAction(message: string, defaultYes = false): Promise<boolean> {
