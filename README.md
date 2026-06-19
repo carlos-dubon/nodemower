@@ -113,7 +113,7 @@ Deleting dependencies is destructive, so `nodemower` is conservative by design:
 
 ## How it works
 
-- **Traversal** is a bounded-concurrency walk (`p-limit` + `fs.readdir`) that streams matches, skips well-known system/cache directories, never follows symlinks, and never recurses into a discovered `node_modules`.
+- **Traversal** is a bounded-concurrency walk (`p-limit` + `fs.readdir`) that streams matches, never follows symlinks, and never recurses into a discovered `node_modules`. It also skips directories whose `node_modules` belong to an installed tool rather than a rebuildable project — system/cache dirs, editor data (`.vscode`, `.vscode-server`, `.cursor`, …), node version managers (`.nvm`, `.volta`, `.asdf`, …), and app-data roots (`Library`, `AppData`, `.config`, `.local`).
 - **Sizing** uses the system `du` on macOS/Linux (fast, reports true on-disk usage) with a concurrent recursive `stat` fallback on Windows.
 - **Deletion** uses [`rimraf`](https://github.com/isaacs/rimraf) for robust cross-platform removal.
 

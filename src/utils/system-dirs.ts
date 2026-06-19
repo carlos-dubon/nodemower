@@ -17,6 +17,27 @@ const SKIP_DIR_NAMES: readonly string[] = [
   ".deno",
   ".yarn",
 
+  ".vscode",
+  ".vscode-insiders",
+  ".vscode-oss",
+  ".vscode-server",
+  ".vscode-server-insiders",
+  ".cursor",
+  ".cursor-server",
+  ".windsurf",
+  ".windsurf-server",
+
+  ".nvm",
+  ".fnm",
+  ".volta",
+  ".asdf",
+  ".nodenv",
+  ".nodebrew",
+  ".npm-global",
+
+  ".config",
+  ".local",
+
   "library",
   "applications",
   "system",
