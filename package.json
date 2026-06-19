@@ -1,6 +1,6 @@
 {
   "name": "nodemower",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Reclaim disk space by finding and cleaning up node_modules directories and JavaScript package manager caches.",
   "keywords": [
     "node_modules",

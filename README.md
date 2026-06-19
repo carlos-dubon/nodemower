@@ -8,36 +8,38 @@
  |_| |_|\___/ \__,_|\___|_| |_| |_|\___/ \_/\_/ \___|_|
 ```
 
-> Reclaim disk space by finding and cleaning up `node_modules` directories and JavaScript package manager caches.
+Old `node_modules` directories pile up fast and quietly eat a lot of disk. nodemower
+finds them, tells you how much space each one is worth, and lets you pick what to
+delete from an interactive list. While it's at it, it can also clear your npm, pnpm,
+yarn, bun, or deno caches.
 
-`nodemower` scans your machine, shows exactly how much space you can recover, lets you interactively pick what to remove, and can clear `npm` / `pnpm` / `yarn` / `bun` / `deno` caches too — with a dry-run mode and explicit confirmation so you never delete something by accident.
-
-- 🚀 **Fast** — concurrent traversal that streams results and never descends into a `node_modules` it already found.
-- 🎯 **Interactive** — a searchable checklist, everything selected by default, sizes shown inline.
-- 🛟 **Safe** — dry-run, a summary, explicit confirmation, and a hard guard that refuses to delete anything not named `node_modules`.
-- 🧹 **Cache-aware** — detect installed package managers and reclaim their caches.
-- 🖥️ **Cross-platform** — first-class macOS and Windows support (Linux works too).
+Nothing is removed without a confirmation, and there's a `--dry-run` flag for when you
+just want to see what would happen.
 
 ## Install
 
 ```bash
 npm install -g nodemower
-# or run without installing:
+```
+
+Or run it once without installing:
+
+```bash
 npx nodemower scan
 ```
 
-Requires **Node.js 20+**.
+Needs Node.js 20 or newer.
 
 ## Quick start
 
 ```bash
-nodemower scan            # see what's reclaimable (read-only)
-nodemower clean           # interactively delete node_modules
-nodemower clean --caches  # ...and offer to clear package manager caches
-nodemower doctor          # environment + detected package managers
+nodemower scan            # see what's reclaimable; changes nothing
+nodemower clean           # pick node_modules to delete
+nodemower clean --caches  # also offer to clear package manager caches
+nodemower doctor          # show your environment and detected package managers
 ```
 
-By default scans start at your home directory. Pass a path to narrow it:
+Scans start from your home directory. Pass a path to look somewhere narrower:
 
 ```bash
 nodemower scan ~/projects
@@ -54,7 +56,7 @@ nodemower clean "C:\work"
 | `nodemower cache clean` | Interactively clear package manager caches. |
 | `nodemower doctor` | Show environment, config, and detected package managers. |
 
-### Common options
+### Options
 
 | Option | Applies to | Description |
 | --- | --- | --- |
@@ -76,7 +78,7 @@ nodemower clean ~/projects --exclude "$(pwd)"
 # Preview a full cleanup including caches, without touching anything
 nodemower clean --caches --dry-run
 
-# Non-interactive cleanup (CI / scripts): delete all found node_modules
+# Non-interactive cleanup for CI or scripts
 nodemower clean ~/scratch --yes
 
 # Pipe scan results into other tools
@@ -85,7 +87,8 @@ nodemower scan ~/code --json | jq '.results[] | select(.bytes > 1e9)'
 
 ## Configuration
 
-`nodemower` reads configuration via [cosmiconfig](https://github.com/cosmiconfig/cosmiconfig). Drop a file in your project (or home directory) — for example `.nodemowerrc.json`:
+nodemower loads config through [cosmiconfig](https://github.com/cosmiconfig/cosmiconfig),
+so you can drop a file in your project or home directory. For example, `.nodemowerrc.json`:
 
 ```json
 {
@@ -97,29 +100,46 @@ nodemower scan ~/code --json | jq '.results[] | select(.bytes > 1e9)'
 }
 ```
 
-Supported locations include `.nodemowerrc`, `.nodemowerrc.{json,yaml,js,cjs}`, `nodemower.config.{js,cjs,mjs,ts}`, and a `"nodemower"` key in `package.json`. Project config is merged with a global config in your home directory; `exclude` lists from both (plus any `--exclude` flags) are combined. Excluded directories never appear in scan results.
+The usual cosmiconfig locations all work: `.nodemowerrc`, `.nodemowerrc.{json,yaml,js,cjs}`,
+`nodemower.config.{js,cjs,mjs,ts}`, or a `"nodemower"` key in `package.json`. A project
+config is merged on top of a global one in your home directory, and the `exclude` lists
+from both — together with anything you pass via `--exclude` — are combined. Excluded paths
+never show up in scan results.
 
 ## Safety
 
-Deleting dependencies is destructive, so `nodemower` is conservative by design:
+Deleting dependencies is destructive, so nodemower stays on the cautious side:
 
-- **Dry-run** (`--dry-run`) performs every calculation and prints exactly what would be removed, but changes nothing.
-- A **summary and total** are always shown before deletion.
-- Deletion requires **explicit confirmation** (unless you opt in with `--yes`).
-- Removal is guarded: the engine **refuses to delete any path not named `node_modules`**.
-- Failures are isolated and **reported per item** (successful vs. failed), and a non-zero exit code is returned if anything failed.
+- `--dry-run` runs the whole scan and sizing pass and prints what it would remove, but
+  doesn't touch anything.
+- You always see a summary and a total before anything is deleted.
+- Deletion needs an explicit confirmation unless you pass `--yes`.
+- As a backstop, the remover refuses to delete any path that isn't named `node_modules`.
+- If one delete fails the rest still run; you get a per-item report and a non-zero exit
+  code when anything failed.
 
-> Package-manager caches are cleared using each tool's own command where possible (`npm cache clean --force`, `pnpm store prune`, `yarn cache clean`, `bun pm cache rm`, `deno clean`), falling back to removing the cache directory. These are safe to clear — the package managers simply repopulate them on demand. Note that `pnpm store prune` only removes packages not referenced by any existing install.
+Caches are cleared with each tool's own command where there is one (`npm cache clean
+--force`, `pnpm store prune`, `yarn cache clean`, `bun pm cache rm`, `deno clean`), and
+fall back to removing the cache directory otherwise. Clearing them is safe; the package
+managers just repopulate on demand. Note that `pnpm store prune` only drops packages no
+existing install references.
 
 ## How it works
 
-- **Traversal** is a bounded-concurrency walk (`p-limit` + `fs.readdir`) that streams matches, never follows symlinks, and never recurses into a discovered `node_modules`. It also skips directories whose `node_modules` belong to an installed tool rather than a rebuildable project — system/cache dirs, editor data (`.vscode`, `.vscode-server`, `.cursor`, …), node version managers (`.nvm`, `.volta`, `.asdf`, …), and app-data roots (`Library`, `AppData`, `.config`, `.local`).
-- **Sizing** uses the system `du` on macOS/Linux (fast, reports true on-disk usage) with a concurrent recursive `stat` fallback on Windows.
-- **Deletion** uses [`rimraf`](https://github.com/isaacs/rimraf) for robust cross-platform removal.
+The scan is a bounded-concurrency walk (`p-limit` plus `fs.readdir`) that streams matches
+as it finds them. It doesn't follow symlinks, and once it hits a `node_modules` it stops
+rather than recursing into it. It also stays out of directories whose `node_modules`
+belong to an installed tool rather than a project you can rebuild — system and cache
+folders, editor data such as `.vscode` and `.cursor`, node version managers like `.nvm`
+and `.volta`, and app-data roots like `Library`, `AppData`, `.config`, and `.local`.
+
+Sizing uses the system `du` on macOS and Linux, which is fast and reports true on-disk
+usage; Windows falls back to a concurrent recursive `stat`. Deletion goes through
+[rimraf](https://github.com/isaacs/rimraf) so it behaves consistently across platforms.
 
 ## Programmatic API
 
-The core engine is also exported for use in scripts:
+The core engine is exported too, if you want to use it from a script:
 
 ```ts
 import { analyze, createExcludeMatcher, detectCaches } from "nodemower";
